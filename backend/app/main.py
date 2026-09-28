@@ -1,9 +1,11 @@
+import csv
 import hashlib
 import hmac
 import json
 import os
 from datetime import date, datetime
 from io import BytesIO
+from pathlib import Path
 from typing import Literal, Optional
 
 import matplotlib
@@ -154,14 +156,58 @@ def get_sales_forecast():
 @app.get("/api/analytics/monthly-item-sales.png")
 def get_monthly_item_sales_chart(
     db: Session = Depends(get_db),
-    months: int = Query(default=6, ge=1, le=24),
+    months: int = Query(default=12, ge=1, le=48),
     metric: Literal["revenue", "units"] = Query(default="revenue"),
+    source: Literal["supermart", "business"] = Query(default="supermart"),
 ):
-    current_month = date.today().replace(day=1)
-    start_index = current_month.year * 12 + current_month.month - 1 - months + 1
+    records: list[tuple[date, str, float, float]] = []
+    if source == "supermart":
+        if metric == "units":
+            raise HTTPException(status_code=400, detail="The Supermart dataset does not include unit quantities")
+        dataset_path = Path(__file__).resolve().parent.parent / "data" / "Supermart Grocery Sales - Retail Analytics Dataset.csv"
+        if not dataset_path.is_file():
+            raise HTTPException(status_code=503, detail="Supermart sales dataset is not installed")
+        with dataset_path.open(encoding="utf-8-sig", newline="") as dataset_file:
+            for row in csv.DictReader(dataset_file):
+                raw_date = row.get("Order Date", "").strip()
+                parsed_date = None
+                for date_format in ("%d-%m-%Y", "%m/%d/%Y"):
+                    try:
+                        parsed_date = datetime.strptime(raw_date, date_format).date()
+                        break
+                    except ValueError:
+                        continue
+                if parsed_date is None:
+                    continue
+                records.append((
+                    parsed_date,
+                    row.get("Sub Category", "Unspecified item").strip() or "Unspecified item",
+                    float(row.get("Sales", "0").replace(",", "")),
+                    0.0,
+                ))
+        if not records:
+            raise HTTPException(status_code=503, detail="Supermart sales dataset contains no valid order rows")
+        last_month = max(record[0] for record in records).replace(day=1)
+    else:
+        current_month = date.today().replace(day=1)
+        sales = (
+            db.query(Sale)
+            .filter(Sale.business_id == "default-business", Sale.created_at >= datetime.min)
+            .all()
+        )
+        for sale in sales:
+            for item in sale.items_json or []:
+                if not isinstance(item, dict):
+                    continue
+                quantity = float(item.get("quantity") or 0)
+                item_name = str(item.get("productName") or item.get("product_name") or "Unspecified item")
+                revenue = float(item.get("total") or (quantity * float(item.get("unitPrice") or 0)))
+                records.append((sale.created_at.date(), item_name, revenue, quantity))
+        last_month = current_month
+
+    start_index = last_month.year * 12 + last_month.month - 1 - months + 1
     start_year, start_month_index = divmod(start_index, 12)
     first_month = date(start_year, start_month_index + 1, 1)
-    first_month_at = datetime.combine(first_month, datetime.min.time())
 
     month_labels = []
     for offset in range(months):
@@ -169,23 +215,13 @@ def get_monthly_item_sales_chart(
         year, month_index = divmod(month_index, 12)
         month_labels.append(date(year, month_index + 1, 1).strftime("%b %Y"))
 
-    sales = (
-        db.query(Sale)
-        .filter(Sale.business_id == "default-business", Sale.created_at >= first_month_at)
-        .all()
-    )
     item_totals: dict[str, list[float]] = {}
-    for sale in sales:
-        month_offset = (sale.created_at.year - first_month.year) * 12 + sale.created_at.month - first_month.month
+    for record_date, item_name, revenue, quantity in records:
+        month_offset = (record_date.year - first_month.year) * 12 + record_date.month - first_month.month
         if not 0 <= month_offset < months:
             continue
-        for item in sale.items_json or []:
-            if not isinstance(item, dict):
-                continue
-            item_name = str(item.get("productName") or item.get("product_name") or "Unspecified item")
-            quantity = float(item.get("quantity") or 0)
-            value = quantity if metric == "units" else float(item.get("total") or (quantity * float(item.get("unitPrice") or 0)))
-            item_totals.setdefault(item_name, [0.0] * months)[month_offset] += value
+        value = quantity if metric == "units" else revenue
+        item_totals.setdefault(item_name, [0.0] * months)[month_offset] += value
 
     figure, axis = plt.subplots(figsize=(10, 4.5), dpi=140)
     figure.patch.set_facecolor("#0f172a")
@@ -208,8 +244,9 @@ def get_monthly_item_sales_chart(
         axis.text(0.5, 0.5, "No itemized sales recorded for this period", ha="center", va="center", color="#94a3b8", fontsize=11, transform=axis.transAxes)
         axis.set_yticks([])
 
-    axis.set_title("Monthly Item Sales", loc="left", color="#f8fafc", fontsize=14, fontweight="bold", pad=16)
-    axis.set_xticks(range(months), month_labels, rotation=25, ha="right", color="#94a3b8", fontsize=8)
+    chart_title = "Supermart Grocery Sales" if source == "supermart" else "Live Business Item Sales"
+    axis.set_title(chart_title, loc="left", color="#f8fafc", fontsize=14, fontweight="bold", pad=16)
+    axis.set_xticks(range(months), month_labels, rotation=35, ha="right", color="#94a3b8", fontsize=7 if months > 24 else 8)
     axis.tick_params(axis="y", colors="#94a3b8", labelsize=8)
     axis.grid(axis="y", color="#334155", alpha=0.55, linewidth=0.8)
     axis.spines["top"].set_visible(False)

@@ -42,8 +42,9 @@ export const BusinessPulseDashboard: React.FC = () => {
   const [saleQuantity, setSaleQuantity] = useState('1');
   const [saleError, setSaleError] = useState('');
   const [isSavingSale, setIsSavingSale] = useState(false);
+  const [salesChartSource, setSalesChartSource] = useState<'supermart' | 'business'>('supermart');
   const [salesChartMetric, setSalesChartMetric] = useState<'revenue' | 'units'>('revenue');
-  const [salesChartMonths, setSalesChartMonths] = useState(6);
+  const [salesChartMonths, setSalesChartMonths] = useState(12);
   const [salesChartError, setSalesChartError] = useState(false);
 
   const [prodName, setProdName] = useState('');
@@ -390,11 +391,32 @@ export const BusinessPulseDashboard: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border-b border-white/10">
           <div>
             <h2 className="text-sm font-bold text-white">Monthly Item Sales</h2>
-            <p className="text-xs text-slate-400 mt-1">Saved product sales by month</p>
+            <p className="text-xs text-slate-400 mt-1">
+              {salesChartSource === 'supermart'
+                ? 'Historical Supermart dataset · Jan 2015 to Dec 2018 · grouped by subcategory'
+                : 'Saved itemized sales from your business · grouped by product'}
+            </p>
           </div>
           <div className="flex items-center gap-3">
+            <div className="inline-flex rounded-lg border border-white/10 bg-navy-950 p-1" role="group" aria-label="Chart data source">
+              {(['supermart', 'business'] as const).map(source => (
+                <button
+                  key={source}
+                  type="button"
+                  onClick={() => {
+                    setSalesChartSource(source);
+                    setSalesChartMetric('revenue');
+                    setSalesChartError(false);
+                  }}
+                  aria-pressed={salesChartSource === source}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold ${salesChartSource === source ? 'bg-electric-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  {source === 'supermart' ? 'Supermart dataset' : 'Business records'}
+                </button>
+              ))}
+            </div>
             <div className="inline-flex rounded-lg border border-white/10 bg-navy-950 p-1" role="group" aria-label="Chart metric">
-              {(['revenue', 'units'] as const).map(metric => (
+              {(salesChartSource === 'supermart' ? ['revenue'] as const : ['revenue', 'units'] as const).map(metric => (
                 <button
                   key={metric}
                   type="button"
@@ -412,7 +434,7 @@ export const BusinessPulseDashboard: React.FC = () => {
               onChange={(event) => { setSalesChartMonths(Number(event.target.value)); setSalesChartError(false); }}
               className="rounded-lg border border-white/10 bg-navy-950 px-3 py-2 text-xs text-slate-200"
             >
-              {[3, 6, 12, 24].map(months => <option key={months} value={months}>{months} months</option>)}
+              {[6, 12, 24, 48].map(months => <option key={months} value={months}>{months} months</option>)}
             </select>
           </div>
         </div>
@@ -420,9 +442,9 @@ export const BusinessPulseDashboard: React.FC = () => {
           <p role="alert" className="p-5 text-sm text-rose-300">Could not load the sales chart. Check that the backend is running.</p>
         ) : (
           <img
-            key={`${salesChartMetric}-${salesChartMonths}-${sales.length}`}
-            src={`http://localhost:8000/api/analytics/monthly-item-sales.png?months=${salesChartMonths}&metric=${salesChartMetric}&version=${sales.length}`}
-            alt={`Monthly item sales by ${salesChartMetric} for the last ${salesChartMonths} months`}
+            key={`${salesChartSource}-${salesChartMetric}-${salesChartMonths}-${sales.length}`}
+            src={`http://localhost:8000/api/analytics/monthly-item-sales.png?source=${salesChartSource}&months=${salesChartMonths}&metric=${salesChartMetric}&version=${sales.length}`}
+            alt={`Monthly ${salesChartSource === 'supermart' ? 'Supermart subcategory' : 'business product'} sales by ${salesChartMetric} for ${salesChartMonths} months`}
             onError={() => setSalesChartError(true)}
             className="block w-full h-auto min-h-64 object-contain p-4"
           />
