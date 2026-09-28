@@ -15,6 +15,9 @@ class Business(Base):
     industry = Column(String, nullable=False)
     currency = Column(String, default="₹")
     location = Column(String)
+    subscription_tier = Column(String, nullable=False, default="FREE")
+    razorpay_subscription_id = Column(String)
+    subscription_status = Column(String, nullable=False, default="inactive")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     users = relationship("User", back_populates="business")

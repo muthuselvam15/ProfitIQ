@@ -1,10 +1,183 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useBusiness } from '../../context/BusinessContext';
-import type { UserRole } from '../../types';
+import type { SubscriptionTier, UserRole } from '../../types';
 import { Crown, Check, UserCheck } from 'lucide-react';
 
+type PaidTier = Exclude<SubscriptionTier, 'FREE'>;
+type RazorpayPaymentResult = {
+  razorpay_payment_id: string;
+  razorpay_subscription_id: string;
+  razorpay_signature: string;
+};
+type RazorpayCheckoutOptions = {
+  key: string;
+  subscription_id: string;
+  name: string;
+  description: string;
+  handler: (result: RazorpayPaymentResult) => void | Promise<void>;
+  modal: { ondismiss: () => void };
+  theme: { color: string };
+};
+type RazorpayCheckout = {
+  open: () => void;
+  on: (event: string, handler: (result: { error?: { description?: string } }) => void) => void;
+};
+
+declare global {
+  interface Window {
+    Razorpay?: new (options: RazorpayCheckoutOptions) => RazorpayCheckout;
+  }
+}
+
+const API_BASE_URL = 'http://localhost:8000/api';
+
+const loadRazorpayScript = () => new Promise<boolean>((resolve) => {
+  if (window.Razorpay) {
+    resolve(true);
+    return;
+  }
+
+  const script = document.createElement('script');
+  script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+  script.onload = () => resolve(true);
+  script.onerror = () => resolve(false);
+  document.body.appendChild(script);
+});
+
 export const SubscriptionPage: React.FC = () => {
-  const { subscriptionTier, setSubscriptionTier, userRole, setUserRole } = useBusiness();
+  const {
+    subscriptionTier,
+    userRole,
+    setUserRole,
+    subscriptionStatus,
+    subscriptionCancelScheduled,
+    refreshSubscription
+  } = useBusiness();
+  const [checkoutTier, setCheckoutTier] = useState<PaidTier | null>(null);
+  const [isCanceling, setIsCanceling] = useState(false);
+  const [checkoutError, setCheckoutError] = useState('');
+  const [checkoutMessage, setCheckoutMessage] = useState('');
+
+  const clearPendingCheckout = async () => {
+    const response = await fetch(`${API_BASE_URL}/subscription/cancel`, { method: 'POST' });
+    if (response.ok) await refreshSubscription();
+  };
+
+  const startCheckout = async (tier: PaidTier) => {
+    setCheckoutTier(tier);
+    setCheckoutError('');
+    setCheckoutMessage('');
+    let paymentCallbackStarted = false;
+    let pendingSubscriptionCreated = false;
+
+    try {
+      const orderResponse = await fetch(`${API_BASE_URL}/subscription/checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier })
+      });
+      const order = await orderResponse.json();
+      if (!orderResponse.ok) throw new Error(order.detail || 'Could not start checkout.');
+      pendingSubscriptionCreated = true;
+
+      if (!await loadRazorpayScript() || !window.Razorpay) {
+        throw new Error('Razorpay Checkout could not be loaded. Check your connection and try again.');
+      }
+
+      const checkout = new window.Razorpay({
+        key: order.key_id,
+        subscription_id: order.subscription_id,
+        name: 'ProfitIQ',
+        description: `${tier} plan, billed monthly for 12 cycles`,
+        handler: async (payment) => {
+          paymentCallbackStarted = true;
+          try {
+            const verifyResponse = await fetch(`${API_BASE_URL}/subscription/verify`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tier, ...payment })
+            });
+            const verification = await verifyResponse.json();
+            if (!verifyResponse.ok) throw new Error(verification.detail || 'Payment verification failed.');
+            await refreshSubscription();
+            setCheckoutMessage(`${tier} subscription activated.`);
+          } catch (error) {
+            setCheckoutError(error instanceof Error ? error.message : 'Payment verification failed.');
+          } finally {
+            setCheckoutTier(null);
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setCheckoutTier(null);
+            if (!paymentCallbackStarted && pendingSubscriptionCreated) {
+              pendingSubscriptionCreated = false;
+              void clearPendingCheckout();
+            }
+          }
+        },
+        theme: { color: '#24a8e0' }
+      });
+
+      checkout.on('payment.failed', (result) => {
+        setCheckoutError(result.error?.description || 'Payment failed. Please try again.');
+        setCheckoutTier(null);
+        if (pendingSubscriptionCreated) {
+          pendingSubscriptionCreated = false;
+          void clearPendingCheckout();
+        }
+      });
+      checkout.open();
+    } catch (error) {
+      if (pendingSubscriptionCreated) void clearPendingCheckout();
+      setCheckoutError(error instanceof Error ? error.message : 'Could not start Razorpay Checkout.');
+      setCheckoutTier(null);
+    }
+  };
+
+  const cancelSubscription = async () => {
+    setIsCanceling(true);
+    setCheckoutError('');
+    setCheckoutMessage('');
+    try {
+      const response = await fetch(`${API_BASE_URL}/subscription/cancel`, { method: 'POST' });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.detail || 'Could not cancel subscription.');
+      await refreshSubscription();
+      setCheckoutMessage(result.cancel_scheduled
+        ? 'Cancellation is scheduled for the end of the current billing cycle.'
+        : 'Pending checkout canceled.');
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : 'Could not cancel subscription.');
+    } finally {
+      setIsCanceling(false);
+    }
+  };
+
+  const renderPaidPlanButton = (tier: PaidTier) => {
+    const isActive = subscriptionTier === tier;
+    const anotherPaidPlanIsActive = subscriptionTier !== 'FREE' && !isActive;
+    const isBusy = checkoutTier !== null || isCanceling;
+    const disabled = isBusy || subscriptionCancelScheduled || anotherPaidPlanIsActive || isActive;
+    const label = isActive
+      ? subscriptionCancelScheduled ? 'Cancellation Scheduled' : 'Active Plan'
+      : anotherPaidPlanIsActive ? 'Cancel Current Plan First'
+        : checkoutTier === tier ? 'Opening Checkout...'
+          : 'Subscribe with Razorpay';
+
+    return (
+      <button
+        onClick={() => void startCheckout(tier)}
+        disabled={disabled}
+        className={`w-full py-2.5 rounded-xl text-xs font-bold transition disabled:opacity-60 ${tier === 'PRO'
+          ? 'bg-gradient-to-r from-electric-500 to-electric-400 text-white'
+          : 'bg-gradient-to-r from-amber-500 to-amber-400 text-white'
+          }`}
+      >
+        {label}
+      </button>
+    );
+  };
 
   return (
     <div className="space-y-8 pb-12 max-w-5xl mx-auto">
@@ -14,9 +187,18 @@ export const SubscriptionPage: React.FC = () => {
           <Crown className="w-7 h-7 text-amber-400" /> Subscription Plans & Role Access
         </h1>
         <p className="text-xs text-slate-400 max-w-xl mx-auto">
-          Manage your active ProfitIQ intelligence tier and test Role-Based Access Control permissions.
+          Manage your ProfitIQ plan. Paid subscriptions are billed monthly for 12 cycles through Razorpay.
         </p>
       </div>
+
+      {(checkoutError || checkoutMessage) && (
+        <div
+          role={checkoutError ? 'alert' : 'status'}
+          className={`rounded-xl border px-4 py-3 text-sm ${checkoutError ? 'border-rose-400/30 bg-rose-500/10 text-rose-200' : 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200'}`}
+        >
+          {checkoutError || checkoutMessage}
+        </div>
+      )}
 
       {/* Active Role Selector Box */}
       <div className="glass-panel p-5 rounded-2xl border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -62,11 +244,14 @@ export const SubscriptionPage: React.FC = () => {
           </div>
 
           <button
-            onClick={() => setSubscriptionTier('FREE')}
-            className={`w-full py-2.5 rounded-xl text-xs font-bold transition ${subscriptionTier === 'FREE' ? 'bg-emerald-500 text-white' : 'bg-navy-800 text-slate-300 hover:text-white'
+            onClick={() => void cancelSubscription()}
+            disabled={isCanceling || subscriptionCancelScheduled || (subscriptionTier === 'FREE' && subscriptionStatus !== 'created')}
+            className={`w-full py-2.5 rounded-xl text-xs font-bold transition disabled:opacity-60 ${subscriptionTier === 'FREE' ? 'bg-emerald-500 text-white' : 'bg-navy-800 text-slate-300 hover:text-white'
               }`}
           >
-            {subscriptionTier === 'FREE' ? 'Active Tier' : 'Switch to Free'}
+            {subscriptionTier === 'FREE'
+              ? subscriptionStatus === 'created' ? 'Cancel Pending Checkout' : 'Active Tier'
+              : subscriptionCancelScheduled ? 'Cancellation Scheduled' : 'Cancel at Period End'}
           </button>
         </div>
 
@@ -76,7 +261,7 @@ export const SubscriptionPage: React.FC = () => {
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-electric-400">PRO TIER</span>
             <h3 className="text-xl font-bold text-white mt-1 mb-2">Pro Plan</h3>
-            <div className="text-2xl font-extrabold text-white mb-4">₹399 <span className="text-xs font-normal text-slate-400">/ mo</span></div>
+            <div className="text-2xl font-extrabold text-white mb-4">₹399 <span className="text-xs font-normal text-slate-400">/ mo, 12 cycles</span></div>
 
             <ul className="space-y-2.5 text-xs text-slate-300 mb-6">
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> Full ProfitIQ Copilot</li>
@@ -86,13 +271,7 @@ export const SubscriptionPage: React.FC = () => {
             </ul>
           </div>
 
-          <button
-            onClick={() => setSubscriptionTier('PRO')}
-            className={`w-full py-2.5 rounded-xl text-xs font-bold transition ${subscriptionTier === 'PRO' ? 'bg-electric-500 text-white' : 'bg-gradient-to-r from-electric-500 to-electric-400 text-white'
-              }`}
-          >
-            {subscriptionTier === 'PRO' ? 'Active Tier' : 'Upgrade to Pro'}
-          </button>
+          {renderPaidPlanButton('PRO')}
         </div>
 
         {/* PREMIUM */}
@@ -101,7 +280,7 @@ export const SubscriptionPage: React.FC = () => {
           <div>
             <span className="text-xs font-bold uppercase tracking-wider text-amber-400">PREMIUM TIER</span>
             <h3 className="text-xl font-bold text-white mt-1 mb-2">Premium Plan</h3>
-            <div className="text-2xl font-extrabold text-white mb-4">₹799 <span className="text-xs font-normal text-slate-400">/ mo</span></div>
+            <div className="text-2xl font-extrabold text-white mb-4">₹799 <span className="text-xs font-normal text-slate-400">/ mo, 12 cycles</span></div>
 
             <ul className="space-y-2.5 text-xs text-slate-300 mb-6">
               <li className="flex items-center gap-2"><Check className="w-4 h-4 text-emerald-400" /> "What If?" Scenario Simulator</li>
@@ -111,13 +290,7 @@ export const SubscriptionPage: React.FC = () => {
             </ul>
           </div>
 
-          <button
-            onClick={() => setSubscriptionTier('PREMIUM')}
-            className={`w-full py-2.5 rounded-xl text-xs font-bold transition ${subscriptionTier === 'PREMIUM' ? 'bg-amber-500 text-white' : 'bg-gradient-to-r from-amber-500 to-amber-400 text-white'
-              }`}
-          >
-            {subscriptionTier === 'PREMIUM' ? 'Active Tier' : 'Upgrade to Premium'}
-          </button>
+          {renderPaidPlanButton('PREMIUM')}
         </div>
       </div>
     </div>

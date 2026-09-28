@@ -21,6 +21,7 @@ export const BusinessPulseDashboard: React.FC = () => {
     pulseData,
     openWhyModal,
     setActiveView,
+    products,
     sales,
     addSale,
     addProduct,
@@ -37,9 +38,13 @@ export const BusinessPulseDashboard: React.FC = () => {
 
   // Quick Form inputs
   const [saleCustomer, setSaleCustomer] = useState('');
-  const [saleAmount, setSaleAmount] = useState('');
+  const [saleProductId, setSaleProductId] = useState('');
+  const [saleQuantity, setSaleQuantity] = useState('1');
   const [saleError, setSaleError] = useState('');
   const [isSavingSale, setIsSavingSale] = useState(false);
+  const [salesChartMetric, setSalesChartMetric] = useState<'revenue' | 'units'>('revenue');
+  const [salesChartMonths, setSalesChartMonths] = useState(6);
+  const [salesChartError, setSalesChartError] = useState(false);
 
   const [prodName, setProdName] = useState('');
   const [prodPrice, setProdPrice] = useState('');
@@ -55,13 +60,24 @@ export const BusinessPulseDashboard: React.FC = () => {
 
   const handleCreateSale = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!saleAmount || isSavingSale) return;
+    if (isSavingSale) return;
+    const product = products.find(item => item.id === saleProductId);
+    if (!product) {
+      setSaleError('Choose a saved product before recording this sale.');
+      return;
+    }
+    const quantity = Math.max(1, Number.parseInt(saleQuantity, 10) || 1);
+    const unitPrice = Number(product.selling_price ?? product.sellingPrice ?? 0);
+    const unitCost = Number(product.purchase_price ?? product.costPrice ?? 0);
+    const totalAmount = unitPrice * quantity;
     setIsSavingSale(true);
     setSaleError('');
     const created = await addSale({
       customerName: saleCustomer || 'Walk-in Customer',
-      totalAmount: parseFloat(saleAmount),
-      paymentMethod: 'UPI'
+      totalAmount,
+      marginAmount: (unitPrice - unitCost) * quantity,
+      paymentMethod: 'UPI',
+      items: [{ productId: product.id, productName: product.name, quantity, unitPrice, total: totalAmount }]
     });
     setIsSavingSale(false);
     if (!created) {
@@ -70,7 +86,8 @@ export const BusinessPulseDashboard: React.FC = () => {
     }
     setModalType(null);
     setSaleCustomer('');
-    setSaleAmount('');
+    setSaleProductId('');
+    setSaleQuantity('1');
   };
 
   const handleCreateProduct = (e: React.FormEvent) => {
@@ -237,8 +254,8 @@ export const BusinessPulseDashboard: React.FC = () => {
                   key={sig.key}
                   onClick={() => setActiveSignalTab(isSelected ? null : sig.key)}
                   className={`p-3 rounded-xl border transition cursor-pointer ${isSelected
-                      ? 'bg-navy-800 border-electric-500/50 shadow-md'
-                      : 'bg-navy-900/60 border-white/5 hover:border-white/20'
+                    ? 'bg-navy-800 border-electric-500/50 shadow-md'
+                    : 'bg-navy-900/60 border-white/5 hover:border-white/20'
                     }`}
                 >
                   <div className="flex items-center justify-between text-xs mb-1.5">
@@ -368,6 +385,49 @@ export const BusinessPulseDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <section className="glass-panel rounded-2xl border border-white/10 overflow-hidden">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border-b border-white/10">
+          <div>
+            <h2 className="text-sm font-bold text-white">Monthly Item Sales</h2>
+            <p className="text-xs text-slate-400 mt-1">Saved product sales by month</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="inline-flex rounded-lg border border-white/10 bg-navy-950 p-1" role="group" aria-label="Chart metric">
+              {(['revenue', 'units'] as const).map(metric => (
+                <button
+                  key={metric}
+                  type="button"
+                  onClick={() => { setSalesChartMetric(metric); setSalesChartError(false); }}
+                  aria-pressed={salesChartMetric === metric}
+                  className={`px-3 py-1.5 rounded-md text-xs font-semibold capitalize ${salesChartMetric === metric ? 'bg-electric-500 text-white' : 'text-slate-400 hover:text-white'}`}
+                >
+                  {metric}
+                </button>
+              ))}
+            </div>
+            <select
+              aria-label="Chart date range"
+              value={salesChartMonths}
+              onChange={(event) => { setSalesChartMonths(Number(event.target.value)); setSalesChartError(false); }}
+              className="rounded-lg border border-white/10 bg-navy-950 px-3 py-2 text-xs text-slate-200"
+            >
+              {[3, 6, 12, 24].map(months => <option key={months} value={months}>{months} months</option>)}
+            </select>
+          </div>
+        </div>
+        {salesChartError ? (
+          <p role="alert" className="p-5 text-sm text-rose-300">Could not load the sales chart. Check that the backend is running.</p>
+        ) : (
+          <img
+            key={`${salesChartMetric}-${salesChartMonths}-${sales.length}`}
+            src={`http://localhost:8000/api/analytics/monthly-item-sales.png?months=${salesChartMonths}&metric=${salesChartMetric}&version=${sales.length}`}
+            alt={`Monthly item sales by ${salesChartMetric} for the last ${salesChartMonths} months`}
+            onError={() => setSalesChartError(true)}
+            className="block w-full h-auto min-h-64 object-contain p-4"
+          />
+        )}
+      </section>
 
       <section className="glass-panel rounded-2xl border border-white/10 overflow-hidden">
         <div className="flex items-center justify-between gap-3 p-4 border-b border-white/10">
@@ -581,18 +641,42 @@ export const BusinessPulseDashboard: React.FC = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-300 mb-1">Total Amount (₹)*</label>
+                  <label className="block text-slate-300 mb-1">Product*</label>
+                  <select
+                    required
+                    value={saleProductId}
+                    onChange={(e) => setSaleProductId(e.target.value)}
+                    disabled={products.length === 0}
+                    className="w-full px-3 py-2 rounded-xl bg-navy-950 border border-white/10 text-white focus:outline-none focus:border-electric-500 disabled:opacity-60"
+                  >
+                    <option value="">{products.length ? 'Choose a product' : 'Add a product first'}</option>
+                    {products.map(product => (
+                      <option key={product.id} value={product.id}>
+                        {product.name} · ₹{Number(product.selling_price ?? product.sellingPrice ?? 0).toLocaleString()}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-300 mb-1">Quantity*</label>
                   <input
                     type="number"
                     required
-                    value={saleAmount}
-                    onChange={(e) => setSaleAmount(e.target.value)}
-                    placeholder="e.g. 1850"
+                    min="1"
+                    step="1"
+                    value={saleQuantity}
+                    onChange={(e) => setSaleQuantity(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl bg-navy-950 border border-white/10 text-white focus:outline-none focus:border-electric-500"
                   />
                 </div>
+                {saleProductId && (
+                  <p className="text-slate-300">Sale total: ₹{(
+                    Number(products.find(product => product.id === saleProductId)?.selling_price ?? products.find(product => product.id === saleProductId)?.sellingPrice ?? 0)
+                    * Math.max(1, Number.parseInt(saleQuantity, 10) || 1)
+                  ).toLocaleString()}</p>
+                )}
                 {saleError && <p role="alert" className="text-rose-300">{saleError}</p>}
-                <button type="submit" disabled={isSavingSale} className="w-full py-2.5 rounded-xl bg-emerald-500 text-white font-bold hover:bg-emerald-400 disabled:opacity-60 transition mt-2">
+                <button type="submit" disabled={isSavingSale || products.length === 0} className="w-full py-2.5 rounded-xl bg-emerald-500 text-white font-bold hover:bg-emerald-400 disabled:opacity-60 transition mt-2">
                   {isSavingSale ? 'Saving Sale...' : 'Save Sale Entry'}
                 </button>
               </form>

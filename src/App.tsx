@@ -50,6 +50,7 @@ const AppContent: React.FC = () => {
     { id: 'copilot', label: 'ProfitIQ Copilot', icon: Sparkles, badge: 'AI' },
     { id: 'inventory', label: 'Smart Inventory', icon: Package, badge: '5 Low' },
     { id: 'invoices', label: 'Invoices', icon: FileText },
+    { id: 'subscription', label: 'Plans & Billing', icon: CreditCard },
     { id: 'expenses', label: 'Expense Radar', icon: CreditCard },
     { id: 'alerts', label: 'Alert Center', icon: Bell, alertCount: unreadAlertCount }
   ];
@@ -203,6 +204,14 @@ const AppContent: React.FC = () => {
             }`}
         >
           <FileText className="w-4 h-4" /> Invoices
+        </button>
+
+        <button
+          onClick={() => setActiveView('subscription')}
+          className={`flex flex-col items-center gap-1 text-[10px] font-semibold ${activeView === 'subscription' ? 'text-electric-400' : 'text-slate-400'
+            }`}
+        >
+          <CreditCard className="w-4 h-4" /> Plans
         </button>
 
         <button

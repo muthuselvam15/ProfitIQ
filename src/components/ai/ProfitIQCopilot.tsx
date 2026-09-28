@@ -9,8 +9,6 @@ import {
   ArrowRight,
   Lock,
   Crown,
-  Key,
-  CheckCircle2,
   ShieldCheck,
   AlertTriangle
 } from 'lucide-react';
@@ -19,14 +17,9 @@ export const ProfitIQCopilot: React.FC = () => {
   const { subscriptionTier, setActiveView } = useBusiness();
   const [inputQuery, setInputQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const [requestError, setRequestError] = useState('');
+  const [failedQuery, setFailedQuery] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
-
-  // API Key & Mode Management State
-  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
-  const [customApiKey, setCustomApiKey] = useState('');
-  const [activeApiKey, setActiveApiKey] = useState('');
-  const [isCustomMode, setIsCustomMode] = useState(false);
-  const [quotaShieldTriggered, setQuotaShieldTriggered] = useState(false);
 
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -35,16 +28,10 @@ export const ProfitIQCopilot: React.FC = () => {
       timestamp: 'Just now',
       response: {
         intent: 'INITIAL_WELCOME',
-        answer: 'Hello! I am ProfitIQ Copilot, your digital business intelligence co-pilot.',
-        data: {
-          'Business Pulse Score': '82/100 (Healthy)',
-          'Monthly Revenue': '₹4,82,500 (+12.4%)',
-          'Low Stock Alerts': '5 Products Below Threshold',
-          'Active Invoices Overdue': '7 Invoices (₹14,500)'
-        },
-        reason: 'I synthesize sales, expenses, inventory, and invoice data strictly from validated backend calculations.',
-        recommendedAction: 'Select a question below or ask anything about your business performance or customer invoices.',
-        actionTarget: 'invoices'
+        answer: 'Hello! I’m ProfitIQ Copilot. I can answer questions from the records saved for your business.',
+        reason: 'Answers use saved sales, inventory, customer, invoice, and expense data. I’ll say when a record or comparison is unavailable.',
+        recommendedAction: 'Ask about sales, profit margin, inventory, customers, invoices, expenses, or a scenario.',
+        actionTarget: 'dashboard',
       }
     }
   ]);
@@ -67,33 +54,25 @@ export const ProfitIQCopilot: React.FC = () => {
     'Simulate a 10% price increase and 5% expense reduction'
   ];
 
-  const handleSaveApiKey = (e: React.FormEvent) => {
-    e.preventDefault();
-    setActiveApiKey(customApiKey.trim());
-    setIsCustomMode(!!customApiKey.trim());
-    setIsApiKeyModalOpen(false);
-  };
-
-  const handleSend = async (queryText?: string) => {
+  const handleSend = async (queryText?: string, retry = false) => {
     const textToSend = queryText || inputQuery;
-    if (!textToSend.trim()) return;
+    if (!textToSend.trim() || loading) return;
 
-    const userMsg: ChatMessage = {
-      id: `usr-${Date.now()}`,
-      sender: 'user',
-      text: textToSend,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    };
-
-    setMessages(prev => [...prev, userMsg]);
+    if (!retry) {
+      const userMsg: ChatMessage = {
+        id: `usr-${Date.now()}`,
+        sender: 'user',
+        text: textToSend,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setMessages(prev => [...prev, userMsg]);
+    }
     if (!queryText) setInputQuery('');
+    setRequestError('');
     setLoading(true);
 
     try {
-      const response = await queryProfitIQCopilot(textToSend, subscriptionTier, activeApiKey, isCustomMode);
-      if (response.usedFallbackEngine && isCustomMode) {
-        setQuotaShieldTriggered(true);
-      }
+      const response = await queryProfitIQCopilot(textToSend, subscriptionTier);
       const aiMsg: ChatMessage = {
         id: `ai-${Date.now()}`,
         sender: 'ai',
@@ -101,8 +80,10 @@ export const ProfitIQCopilot: React.FC = () => {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages(prev => [...prev, aiMsg]);
+      setFailedQuery('');
     } catch (err) {
-      // Fallback
+      setFailedQuery(textToSend);
+      setRequestError(err instanceof Error ? err.message : 'The Copilot could not reach the business data service.');
     } finally {
       setLoading(false);
     }
@@ -129,44 +110,22 @@ export const ProfitIQCopilot: React.FC = () => {
           </div>
         </div>
 
-        {/* Engine Mode & API Key Config Button */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-navy-950/80 px-3 py-2 rounded-xl border border-white/10 shrink-0">
-            <ShieldCheck className={`w-4 h-4 ${isCustomMode ? 'text-emerald-400' : 'text-electric-400'}`} />
-            <div className="text-left text-[10px]">
-              <div className="text-slate-400 font-semibold uppercase">Engine Mode</div>
-              <div className="font-bold text-white">
-                {isCustomMode ? 'Custom API Key (Shielded)' : 'Controlled Local Engine'}
-              </div>
-            </div>
+        <div className="flex items-center gap-2 bg-navy-950/80 px-3 py-2 rounded-xl border border-white/10 shrink-0">
+          <ShieldCheck className="w-4 h-4 text-electric-400" />
+          <div className="text-left text-[10px]">
+            <div className="text-slate-400 font-semibold uppercase">Data Source</div>
+            <div className="font-bold text-white">Saved Business Records</div>
           </div>
-
-          <button
-            onClick={() => setIsApiKeyModalOpen(true)}
-            className="px-3 py-2 rounded-xl bg-navy-800 hover:bg-navy-700 text-slate-200 text-xs font-bold border border-white/10 transition flex items-center gap-1.5"
-          >
-            <Key className="w-3.5 h-3.5 text-amber-400" />
-            <span>API Key</span>
-          </button>
         </div>
       </div>
 
-      {/* Quota Shield Notice Banner */}
-      {quotaShieldTriggered && (
-        <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-slate-200 flex items-center justify-between gap-3 animate-fade-in">
+      {requestError && (
+        <div role="alert" className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-slate-200 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
-            <span>
-              <strong className="text-white">API Quota Shield Active: </strong>
-              API key hit a rate limit or quota boundary. ProfitIQ's controlled local engine seamlessly processed your request using offline tool calculations.
-            </span>
+            <span>{requestError}</span>
           </div>
-          <button
-            onClick={() => setQuotaShieldTriggered(false)}
-            className="text-slate-400 hover:text-white text-xs font-bold"
-          >
-            Dismiss
-          </button>
+          <button onClick={() => void handleSend(failedQuery, true)} disabled={loading || !failedQuery} className="text-amber-200 hover:text-white text-xs font-bold disabled:opacity-50">Retry</button>
         </div>
       )}
 
@@ -177,7 +136,8 @@ export const ProfitIQCopilot: React.FC = () => {
           <button
             key={idx}
             onClick={() => handleSend(q)}
-            className="px-3 py-1.5 rounded-xl bg-navy-850 hover:bg-navy-750 border border-white/10 text-xs font-medium text-slate-200 hover:text-white transition whitespace-nowrap shrink-0 hover:border-electric-500/40"
+            disabled={loading}
+            className="px-3 py-1.5 rounded-xl bg-navy-850 hover:bg-navy-750 border border-white/10 text-xs font-medium text-slate-200 hover:text-white transition whitespace-nowrap shrink-0 hover:border-electric-500/40 disabled:opacity-50"
           >
             {q}
           </button>
@@ -305,92 +265,29 @@ export const ProfitIQCopilot: React.FC = () => {
         }}
         className="flex items-center gap-3 glass-panel p-2.5 rounded-2xl border border-white/10 bg-navy-900"
       >
-        <input
-          type="text"
+        <textarea
+          rows={1}
           value={inputQuery}
           onChange={(e) => setInputQuery(e.target.value)}
-          placeholder="Ask ProfitIQ anything about your business performance, inventory, expenses, or invoices..."
-          className="flex-1 bg-transparent px-4 py-2.5 text-xs text-white placeholder-slate-400 focus:outline-none"
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.shiftKey) {
+              event.preventDefault();
+              void handleSend();
+            }
+          }}
+          placeholder="Ask about your saved sales, inventory, expenses, customers, or invoices..."
+          className="flex-1 bg-transparent px-4 py-2.5 text-xs text-white placeholder-slate-400 focus:outline-none resize-y min-h-10 max-h-32"
         />
         <button
           type="submit"
           disabled={!inputQuery.trim() || loading}
           className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-electric-500 to-electric-400 hover:from-electric-400 text-white font-bold text-xs transition flex items-center gap-1.5 disabled:opacity-40 shadow-lg shadow-electric-500/20"
         >
-          <span>Ask Copilot</span>
+          <span>{loading ? 'Thinking...' : 'Ask Copilot'}</span>
           <Send className="w-3.5 h-3.5" />
         </button>
       </form>
 
-      {/* API Key Settings Modal */}
-      {isApiKeyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
-          <div className="w-full max-w-md glass-panel rounded-2xl border border-white/20 p-6 bg-navy-900 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Key className="w-5 h-5 text-amber-400" /> Configure AI API Key & Fallback
-              </h3>
-              <button onClick={() => setIsApiKeyModalOpen(false)} className="text-slate-400 hover:text-white text-sm">✕</button>
-            </div>
-
-            <p className="text-xs text-slate-300">
-              ProfitIQ works out of the box using our <strong>Controlled Local Tool Engine</strong>. If you provide a custom API key, ProfitIQ uses it while maintaining a zero-downtime <strong>Rate Limit Shield</strong> fallback.
-            </p>
-
-            <form onSubmit={handleSaveApiKey} className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-300 mb-1 font-semibold">Custom API Key (Optional)</label>
-                <input
-                  type="password"
-                  value={customApiKey}
-                  onChange={(e) => setCustomApiKey(e.target.value)}
-                  placeholder="Paste AI API Key (e.g. AIzaSy... or sk-...)"
-                  className="w-full px-3 py-2.5 rounded-xl bg-navy-950 border border-white/10 text-white focus:outline-none focus:border-electric-500 font-mono text-xs"
-                />
-                <span className="text-[10px] text-slate-400 mt-1 block">
-                  Tip: Leave blank to use ProfitIQ's default Controlled Local Engine (Unlimited & Free).
-                </span>
-              </div>
-
-              <div className="p-3 rounded-xl bg-navy-950 border border-white/5 space-y-1.5 text-[11px]">
-                <div className="flex items-center justify-between text-slate-300">
-                  <span>Current Mode:</span>
-                  <span className="font-bold text-white">{isCustomMode ? 'Custom API Key' : 'Local Controlled Engine'}</span>
-                </div>
-                <div className="flex items-center justify-between text-slate-300">
-                  <span>Quota Protection:</span>
-                  <span className="font-bold text-emerald-400 flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3" /> Active
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                {isCustomMode && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCustomApiKey('');
-                      setActiveApiKey('');
-                      setIsCustomMode(false);
-                      setIsApiKeyModalOpen(false);
-                    }}
-                    className="px-3 py-2 rounded-xl bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 text-xs font-semibold"
-                  >
-                    Reset to Local Engine
-                  </button>
-                )}
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-electric-500 hover:bg-electric-400 text-white font-bold transition shadow"
-                >
-                  Save Configuration
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

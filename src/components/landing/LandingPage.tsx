@@ -293,7 +293,7 @@ export const LandingPage: React.FC = () => {
               Select the plan that fits your business stage.
             </h2>
             <p className="text-slate-400 text-sm max-w-xl mx-auto">
-              No hidden fees. Free plan to get started, upgrade as your intelligence requirements grow.
+              Free to get started. Pro and Premium are billed monthly through Razorpay for 12 billing cycles.
             </p>
           </div>
 
@@ -316,7 +316,7 @@ export const LandingPage: React.FC = () => {
               </div>
 
               <button
-                onClick={() => setActiveView('dashboard')}
+                onClick={() => setActiveView('subscription')}
                 className="w-full py-3 rounded-xl text-xs font-bold text-white bg-navy-800 hover:bg-navy-700 border border-white/10 transition"
               >
                 Get Started Free
@@ -350,7 +350,7 @@ export const LandingPage: React.FC = () => {
                 onClick={() => setActiveView('dashboard')}
                 className="w-full py-3 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-electric-500 to-electric-400 hover:from-electric-400 hover:to-electric-300 transition shadow-lg shadow-electric-500/25"
               >
-                Start 14-Day Free Pro Trial
+                Continue to Pro
               </button>
             </div>
 
@@ -373,10 +373,10 @@ export const LandingPage: React.FC = () => {
               </div>
 
               <button
-                onClick={() => setActiveView('dashboard')}
+                onClick={() => setActiveView('subscription')}
                 className="w-full py-3 rounded-xl text-xs font-bold text-slate-200 hover:text-white bg-navy-800 hover:bg-navy-700 border border-ai-purple/30 transition"
               >
-                Upgrade to Premium
+                Choose Premium
               </button>
             </div>
           </div>

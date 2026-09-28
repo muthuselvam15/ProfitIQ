@@ -120,6 +120,9 @@ interface BusinessContextType {
   setUserRole: (role: UserRole) => void;
   subscriptionTier: SubscriptionTier;
   setSubscriptionTier: (tier: SubscriptionTier) => void;
+  subscriptionStatus: string;
+  subscriptionCancelScheduled: boolean;
+  refreshSubscription: () => Promise<void>;
   pulseData: BusinessPulseData;
   products: Product[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
@@ -157,7 +160,9 @@ const BusinessContext = createContext<BusinessContextType | undefined>(undefined
 export const BusinessProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeView, setActiveView] = useState<string>('landing');
   const [userRole, setUserRole] = useState<UserRole>('OWNER');
-  const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>('PRO');
+  const [subscriptionTier, setSubscriptionTier] = useState<SubscriptionTier>('FREE');
+  const [subscriptionStatus, setSubscriptionStatus] = useState('inactive');
+  const [subscriptionCancelScheduled, setSubscriptionCancelScheduled] = useState(false);
   const [pulseData] = useState<BusinessPulseData>(INITIAL_PULSE_DATA);
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -180,6 +185,21 @@ export const BusinessProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const toggleDemoMode = () => {
     setIsDemoMode(prev => !prev);
+  };
+
+  const refreshSubscription = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/subscription`);
+      if (!res.ok) return;
+      const data = await res.json();
+      if (['FREE', 'PRO', 'PREMIUM'].includes(data.tier)) {
+        setSubscriptionTier(data.tier as SubscriptionTier);
+      }
+      setSubscriptionStatus(data.status || 'inactive');
+      setSubscriptionCancelScheduled(Boolean(data.cancel_scheduled));
+    } catch (error) {
+      console.error('Failed to load subscription from backend:', error);
+    }
   };
 
   const fetchProducts = async () => {
@@ -231,6 +251,7 @@ export const BusinessProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     fetchLowStockProducts();
     fetchSales();
     fetchCustomers();
+    refreshSubscription();
   }, []);
 
   const addSale = async (newSale: Partial<Sale>) => {
@@ -382,6 +403,9 @@ export const BusinessProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setUserRole,
         subscriptionTier,
         setSubscriptionTier,
+        subscriptionStatus,
+        subscriptionCancelScheduled,
+        refreshSubscription,
         pulseData,
         products,
         setProducts,
