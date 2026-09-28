@@ -1,0 +1,1 @@
+"""ProfitIQ backend package."""
