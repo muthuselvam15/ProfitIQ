@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text, JSON, Index
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Text, JSON, Index
 from sqlalchemy.orm import relationship
 
 from database import Base
@@ -44,7 +44,7 @@ class Product(Base):
     __tablename__ = "products"
 
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    business_id = Column(String, ForeignKey("businesses.id"), nullable=False, default="default-business", index=True)
+    business_id = Column(String, nullable=False, default="default-business", index=True)
     name = Column(String, nullable=False, index=True)
     category = Column(String, nullable=False, index=True)
     description = Column(Text, nullable=True)
@@ -69,18 +69,12 @@ class Sale(Base):
     id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     business_id = Column(String, ForeignKey("businesses.id"), nullable=False)
     customer_name = Column(String)
-    invoice_number = Column(String, nullable=True)
     total_amount = Column(Float, nullable=False)
     margin_amount = Column(Float, nullable=False)
     payment_method = Column(String, default="CASH")
-    items_json = Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     business = relationship("Business", back_populates="sales")
-
-    @property
-    def items(self):
-        return self.items_json or []
 
 
 class Expense(Base):

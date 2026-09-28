@@ -17,12 +17,15 @@ export const InventoryIntelligence: React.FC = () => {
   const restockItem = (id: string) => {
     setProducts(prev => prev.map(p => {
       if (p.id === id) {
-        const added = p.suggestedReorderQty || 30;
-        const newStock = p.currentStock + added;
+        const currentStock = Number(p.currentStock ?? p.stock_quantity ?? 0);
+        const avgDailySales = Number(p.avgDailySales ?? 1.0);
+        const added = Number(p.suggestedReorderQty ?? 30);
+        const newStock = currentStock + added;
         return {
           ...p,
           currentStock: newStock,
-          daysRemaining: Math.round(newStock / (p.avgDailySales || 1.0)),
+          stock_quantity: newStock,
+          daysRemaining: Math.max(1, Math.round(newStock / (avgDailySales || 1.0))),
           status: 'HEALTHY'
         };
       }
@@ -48,9 +51,8 @@ export const InventoryIntelligence: React.FC = () => {
             <button
               key={cat}
               onClick={() => setFilterCategory(cat)}
-              className={`px-3 py-1.5 rounded-lg font-medium transition ${
-                filterCategory === cat ? 'bg-amber-500 text-white font-bold' : 'text-slate-400 hover:text-white'
-              }`}
+              className={`px-3 py-1.5 rounded-lg font-medium transition ${filterCategory === cat ? 'bg-amber-500 text-white font-bold' : 'text-slate-400 hover:text-white'
+                }`}
             >
               {cat}
             </button>
@@ -94,12 +96,11 @@ export const InventoryIntelligence: React.FC = () => {
           return (
             <div
               key={prod.id}
-              className={`glass-panel p-5 rounded-2xl border flex flex-col justify-between space-y-4 transition-all duration-300 ${
-                isCritical ? 'border-rose-500/50 bg-rose-500/5' :
-                isLow ? 'border-amber-500/40 bg-amber-500/5' :
-                isOverstocked ? 'border-purple-500/30' :
-                'border-white/10'
-              }`}
+              className={`glass-panel p-5 rounded-2xl border flex flex-col justify-between space-y-4 transition-all duration-300 ${isCritical ? 'border-rose-500/50 bg-rose-500/5' :
+                  isLow ? 'border-amber-500/40 bg-amber-500/5' :
+                    isOverstocked ? 'border-purple-500/30' :
+                      'border-white/10'
+                }`}
             >
               <div>
                 <div className="flex items-start justify-between gap-2 mb-2">
@@ -108,12 +109,11 @@ export const InventoryIntelligence: React.FC = () => {
                     <h3 className="text-base font-bold text-white mt-0.5 leading-snug">{prod.name}</h3>
                   </div>
 
-                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border shrink-0 ${
-                    isCritical ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' :
-                    isLow ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
-                    isOverstocked ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' :
-                    'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                  }`}>
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border shrink-0 ${isCritical ? 'bg-rose-500/20 text-rose-400 border-rose-500/30' :
+                      isLow ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
+                        isOverstocked ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' :
+                          'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                    }`}>
                     {isCritical ? 'RESTOCK NOW' : isLow ? 'LOW SAFETY STOCK' : isOverstocked ? 'OVERSTOCKED' : 'HEALTHY'}
                   </span>
                 </div>
@@ -146,7 +146,7 @@ export const InventoryIntelligence: React.FC = () => {
                   <div className="w-full h-2 bg-navy-950 rounded-full overflow-hidden flex">
                     <div
                       className={`h-full ${isCritical ? 'bg-rose-500' : isLow ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                      style={{ width: `${Math.min(100, (prod.daysRemaining / 15) * 100)}%` }}
+                      style={{ width: `${Math.min(100, ((prod.daysRemaining ?? 0) / 15) * 100)}%` }}
                     />
                   </div>
                 </div>
@@ -161,11 +161,10 @@ export const InventoryIntelligence: React.FC = () => {
 
                 <button
                   onClick={() => restockItem(prod.id)}
-                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition flex items-center gap-1 ${
-                    isCritical
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition flex items-center gap-1 ${isCritical
                       ? 'bg-rose-500 hover:bg-rose-400 text-white shadow-md shadow-rose-500/20'
                       : 'bg-navy-800 hover:bg-navy-700 text-slate-200 border border-white/10'
-                  }`}
+                    }`}
                 >
                   <RefreshCw className="w-3 h-3" /> Restock
                 </button>

@@ -47,21 +47,30 @@ export interface PriorityAction {
 
 export interface Product {
   id: string;
+  business_id?: string;
   name: string;
-  sku: string;
   category: string;
-  costPrice: number;
-  sellingPrice: number;
-  currentStock: number;
-  reorderPoint: number;
-  supplierLeadTimeDays: number;
-  avgDailySales: number;
-  daysRemaining: number;
-  forecastedStockoutDate: string;
-  suggestedReorderQty: number;
-  revenue: number;
-  marginPct: number;
-  status: 'HEALTHY' | 'LOW_STOCK' | 'CRITICAL' | 'OVERSTOCKED';
+  description?: string;
+  purchase_price?: number;
+  selling_price?: number;
+  stock_quantity?: number;
+  minimum_stock?: number;
+  supplier?: string;
+  created_at?: string;
+  updated_at?: string;
+  sku?: string;
+  costPrice?: number;
+  sellingPrice?: number;
+  currentStock?: number;
+  reorderPoint?: number;
+  supplierLeadTimeDays?: number;
+  avgDailySales?: number;
+  daysRemaining?: number;
+  forecastedStockoutDate?: string;
+  suggestedReorderQty?: number;
+  revenue?: number;
+  marginPct?: number;
+  status?: 'HEALTHY' | 'LOW_STOCK' | 'CRITICAL' | 'OVERSTOCKED';
 }
 
 export interface SaleItem {

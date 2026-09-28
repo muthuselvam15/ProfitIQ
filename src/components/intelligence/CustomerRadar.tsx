@@ -4,13 +4,14 @@ import { Users, Sparkles, ArrowRight } from 'lucide-react';
 
 export const CustomerRadar: React.FC = () => {
   const { customers, setActiveView } = useBusiness();
+  const inactiveCount = customers.filter(customer => customer.segment === 'Inactive').length;
 
   const segments = [
-    { label: 'Frequent Champions', count: 24, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
-    { label: 'High-Value VIPs', count: 18, color: 'text-electric-400 bg-electric-500/10 border-electric-500/30' },
-    { label: 'Returning Customers', count: 142, color: 'text-slate-300 bg-navy-800 border-white/10' },
-    { label: 'Inactive (60+ Days)', count: 18, color: 'text-amber-400 bg-amber-500/10 border-amber-500/30' },
-    { label: 'Overdue Balance', count: 7, color: 'text-rose-400 bg-rose-500/10 border-rose-500/30' },
+    { label: 'Frequent Champions', count: customers.filter(customer => customer.segment === 'Frequent').length, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' },
+    { label: 'High-Value VIPs', count: customers.filter(customer => customer.segment === 'High-Value').length, color: 'text-electric-400 bg-electric-500/10 border-electric-500/30' },
+    { label: 'Returning Customers', count: customers.filter(customer => customer.segment === 'Returning').length, color: 'text-slate-300 bg-navy-800 border-white/10' },
+    { label: 'Inactive (60+ Days)', count: inactiveCount, color: 'text-amber-400 bg-amber-500/10 border-amber-500/30' },
+    { label: 'Overdue Balance', count: customers.filter(customer => customer.outstandingBalance > 0).length, color: 'text-rose-400 bg-rose-500/10 border-rose-500/30' },
   ];
 
   return (
@@ -44,7 +45,7 @@ export const CustomerRadar: React.FC = () => {
             <Sparkles className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white">18 Customers inactive for over 60 days</h3>
+            <h3 className="text-base font-bold text-white">{inactiveCount} Customers inactive for over 60 days</h3>
             <p className="text-xs text-slate-300">
               Suggested action: Dispatch an automated 10% win-back promotional offer to re-activate these accounts.
             </p>
@@ -84,12 +85,11 @@ export const CustomerRadar: React.FC = () => {
                     <div className="text-[11px] text-slate-400">{cust.email}</div>
                   </td>
                   <td className="px-5 py-3.5">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                      cust.segment === 'High-Value' ? 'bg-electric-500/20 text-electric-300 border-electric-500/30' :
-                      cust.segment === 'Frequent' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
-                      cust.segment === 'Inactive' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
-                      'bg-navy-800 text-slate-300 border-white/10'
-                    }`}>
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${cust.segment === 'High-Value' ? 'bg-electric-500/20 text-electric-300 border-electric-500/30' :
+                        cust.segment === 'Frequent' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' :
+                          cust.segment === 'Inactive' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
+                            'bg-navy-800 text-slate-300 border-white/10'
+                      }`}>
                       {cust.segment}
                     </span>
                   </td>

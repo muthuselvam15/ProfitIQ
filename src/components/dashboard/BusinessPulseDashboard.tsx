@@ -21,6 +21,7 @@ export const BusinessPulseDashboard: React.FC = () => {
     pulseData,
     openWhyModal,
     setActiveView,
+    sales,
     addSale,
     addProduct,
     addExpense,
@@ -33,11 +34,13 @@ export const BusinessPulseDashboard: React.FC = () => {
 
   // Quick Action Modal states
   const [modalType, setModalType] = useState<'sale' | 'product' | 'expense' | 'invoice' | null>(null);
-  
+
   // Quick Form inputs
   const [saleCustomer, setSaleCustomer] = useState('');
   const [saleAmount, setSaleAmount] = useState('');
-  
+  const [saleError, setSaleError] = useState('');
+  const [isSavingSale, setIsSavingSale] = useState(false);
+
   const [prodName, setProdName] = useState('');
   const [prodPrice, setProdPrice] = useState('');
   const [prodCost, setProdCost] = useState('');
@@ -50,14 +53,21 @@ export const BusinessPulseDashboard: React.FC = () => {
   const [invCustomer, setInvCustomer] = useState('');
   const [invAmount, setInvAmount] = useState('');
 
-  const handleCreateSale = (e: React.FormEvent) => {
+  const handleCreateSale = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!saleAmount) return;
-    addSale({
+    if (!saleAmount || isSavingSale) return;
+    setIsSavingSale(true);
+    setSaleError('');
+    const created = await addSale({
       customerName: saleCustomer || 'Walk-in Customer',
       totalAmount: parseFloat(saleAmount),
       paymentMethod: 'UPI'
     });
+    setIsSavingSale(false);
+    if (!created) {
+      setSaleError('Sale could not be saved. Check the backend connection and try again.');
+      return;
+    }
     setModalType(null);
     setSaleCustomer('');
     setSaleAmount('');
@@ -226,11 +236,10 @@ export const BusinessPulseDashboard: React.FC = () => {
                 <div
                   key={sig.key}
                   onClick={() => setActiveSignalTab(isSelected ? null : sig.key)}
-                  className={`p-3 rounded-xl border transition cursor-pointer ${
-                    isSelected
+                  className={`p-3 rounded-xl border transition cursor-pointer ${isSelected
                       ? 'bg-navy-800 border-electric-500/50 shadow-md'
                       : 'bg-navy-900/60 border-white/5 hover:border-white/20'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between text-xs mb-1.5">
                     <div className="flex items-center gap-2">
@@ -359,6 +368,49 @@ export const BusinessPulseDashboard: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <section className="glass-panel rounded-2xl border border-white/10 overflow-hidden">
+        <div className="flex items-center justify-between gap-3 p-4 border-b border-white/10">
+          <div>
+            <h2 className="text-sm font-bold text-white">Recent Sales</h2>
+            <p className="text-xs text-slate-400 mt-1">{sales.length} records from your business</p>
+          </div>
+          <button
+            onClick={() => setModalType('sale')}
+            className="px-3 py-1.5 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold hover:bg-emerald-500/30 transition"
+          >
+            Record Sale
+          </button>
+        </div>
+        {sales.length === 0 ? (
+          <p className="p-5 text-sm text-slate-400">No sales have been recorded yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-navy-950 text-slate-400 border-b border-white/10">
+                <tr>
+                  <th className="px-5 py-3">Invoice</th>
+                  <th className="px-5 py-3">Customer</th>
+                  <th className="px-5 py-3">Payment</th>
+                  <th className="px-5 py-3">Date</th>
+                  <th className="px-5 py-3 text-right">Amount</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5">
+                {sales.slice(0, 5).map((sale) => (
+                  <tr key={sale.id} className="hover:bg-navy-800/40 transition">
+                    <td className="px-5 py-3 font-mono text-slate-300">{sale.invoiceNumber}</td>
+                    <td className="px-5 py-3 font-semibold text-white">{sale.customerName}</td>
+                    <td className="px-5 py-3 text-slate-300">{sale.paymentMethod}</td>
+                    <td className="px-5 py-3 text-slate-400">{sale.date}</td>
+                    <td className="px-5 py-3 text-right font-bold text-white">₹{sale.totalAmount.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {/* "WHAT SHOULD I DO TODAY?" PRIORITIZED ACTIONS SECTION */}
       <div className="glass-panel p-6 rounded-2xl border border-white/10 space-y-5">
@@ -539,8 +591,9 @@ export const BusinessPulseDashboard: React.FC = () => {
                     className="w-full px-3 py-2 rounded-xl bg-navy-950 border border-white/10 text-white focus:outline-none focus:border-electric-500"
                   />
                 </div>
-                <button type="submit" className="w-full py-2.5 rounded-xl bg-emerald-500 text-white font-bold hover:bg-emerald-400 transition mt-2">
-                  Save Sale Entry
+                {saleError && <p role="alert" className="text-rose-300">{saleError}</p>}
+                <button type="submit" disabled={isSavingSale} className="w-full py-2.5 rounded-xl bg-emerald-500 text-white font-bold hover:bg-emerald-400 disabled:opacity-60 transition mt-2">
+                  {isSavingSale ? 'Saving Sale...' : 'Save Sale Entry'}
                 </button>
               </form>
             )}
