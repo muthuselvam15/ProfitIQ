@@ -4,6 +4,7 @@ import hmac
 import json
 import os
 from datetime import date, datetime
+from functools import lru_cache
 from io import BytesIO
 from pathlib import Path
 from typing import Literal, Optional
@@ -18,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from matplotlib.ticker import FuncFormatter
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 
 from app.analytics import calculate_business_pulse, detect_profit_leaks, generate_30day_forecast, simulate_scenario
 from app.ai_copilot import execute_copilot_query
@@ -150,6 +151,52 @@ def get_sales_forecast():
     return generate_30day_forecast(None)
 
 
+@lru_cache(maxsize=32)
+def _render_monthly_item_sales_chart(
+    source: str,
+    metric: str,
+    month_labels: tuple[str, ...],
+    chart_values: tuple[tuple[str, tuple[float, ...]], ...],
+) -> bytes:
+    item_totals = {item_name: list(values) for item_name, values in chart_values}
+    figure, axis = plt.subplots(figsize=(10, 4.5), dpi=140)
+    figure.patch.set_facecolor("#0f172a")
+    axis.set_facecolor("#0f172a")
+    colors = ["#38bdf8", "#34d399", "#fbbf24", "#fb7185", "#a78bfa", "#22d3ee", "#f472b6"]
+
+    if item_totals:
+        totals = sorted(item_totals.items(), key=lambda entry: sum(entry[1]), reverse=True)
+        visible_items = totals[:6]
+        if len(totals) > 6:
+            other_values = [sum(values[index] for _, values in totals[6:]) for index in range(len(month_labels))]
+            visible_items.append(("Other items", other_values))
+        for index, (item_name, values) in enumerate(visible_items):
+            axis.plot(month_labels, values, marker="o", linewidth=2.2, markersize=4, color=colors[index % len(colors)], label=item_name)
+        axis.legend(loc="upper left", bbox_to_anchor=(1.01, 1), frameon=False, labelcolor="#e2e8f0", fontsize=8)
+        axis.set_ylabel("Units sold" if metric == "units" else "Sales revenue", color="#cbd5e1", fontsize=9)
+        if metric == "revenue":
+            axis.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"₹{value:,.0f}"))
+    else:
+        axis.text(0.5, 0.5, "No itemized sales recorded for this period", ha="center", va="center", color="#94a3b8", fontsize=11, transform=axis.transAxes)
+        axis.set_yticks([])
+
+    chart_title = "Supermart Grocery Sales" if source == "supermart" else "Live Business Item Sales"
+    axis.set_title(chart_title, loc="left", color="#f8fafc", fontsize=14, fontweight="bold", pad=16)
+    axis.set_xticks(range(len(month_labels)), month_labels, rotation=35, ha="right", color="#94a3b8", fontsize=7 if len(month_labels) > 24 else 8)
+    axis.tick_params(axis="y", colors="#94a3b8", labelsize=8)
+    axis.grid(axis="y", color="#334155", alpha=0.55, linewidth=0.8)
+    axis.spines["top"].set_visible(False)
+    axis.spines["right"].set_visible(False)
+    axis.spines["left"].set_color("#334155")
+    axis.spines["bottom"].set_color("#334155")
+    figure.tight_layout()
+
+    image = BytesIO()
+    figure.savefig(image, format="png", bbox_inches="tight", facecolor=figure.get_facecolor())
+    plt.close(figure)
+    return image.getvalue()
+
+
 @app.get("/api/analytics/monthly-item-sales.png")
 def get_monthly_item_sales_chart(
     db: Session = Depends(get_db),
@@ -220,43 +267,10 @@ def get_monthly_item_sales_chart(
         value = quantity if metric == "units" else revenue
         item_totals.setdefault(item_name, [0.0] * months)[month_offset] += value
 
-    figure, axis = plt.subplots(figsize=(10, 4.5), dpi=140)
-    figure.patch.set_facecolor("#0f172a")
-    axis.set_facecolor("#0f172a")
-    colors = ["#38bdf8", "#34d399", "#fbbf24", "#fb7185", "#a78bfa", "#22d3ee", "#f472b6"]
-
-    if item_totals:
-        totals = sorted(item_totals.items(), key=lambda entry: sum(entry[1]), reverse=True)
-        visible_items = totals[:6]
-        if len(totals) > 6:
-            other_values = [sum(values[index] for _, values in totals[6:]) for index in range(months)]
-            visible_items.append(("Other items", other_values))
-        for index, (item_name, values) in enumerate(visible_items):
-            axis.plot(month_labels, values, marker="o", linewidth=2.2, markersize=4, color=colors[index % len(colors)], label=item_name)
-        axis.legend(loc="upper left", bbox_to_anchor=(1.01, 1), frameon=False, labelcolor="#e2e8f0", fontsize=8)
-        axis.set_ylabel("Units sold" if metric == "units" else "Sales revenue", color="#cbd5e1", fontsize=9)
-        if metric == "revenue":
-            axis.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"₹{value:,.0f}"))
-    else:
-        axis.text(0.5, 0.5, "No itemized sales recorded for this period", ha="center", va="center", color="#94a3b8", fontsize=11, transform=axis.transAxes)
-        axis.set_yticks([])
-
-    chart_title = "Supermart Grocery Sales" if source == "supermart" else "Live Business Item Sales"
-    axis.set_title(chart_title, loc="left", color="#f8fafc", fontsize=14, fontweight="bold", pad=16)
-    axis.set_xticks(range(months), month_labels, rotation=35, ha="right", color="#94a3b8", fontsize=7 if months > 24 else 8)
-    axis.tick_params(axis="y", colors="#94a3b8", labelsize=8)
-    axis.grid(axis="y", color="#334155", alpha=0.55, linewidth=0.8)
-    axis.spines["top"].set_visible(False)
-    axis.spines["right"].set_visible(False)
-    axis.spines["left"].set_color("#334155")
-    axis.spines["bottom"].set_color("#334155")
-    figure.tight_layout()
-
-    image = BytesIO()
-    figure.savefig(image, format="png", bbox_inches="tight", facecolor=figure.get_facecolor())
-    plt.close(figure)
-    image.seek(0)
-    return StreamingResponse(image, media_type="image/png", headers={"Cache-Control": "no-store"})
+    chart_values = tuple((item_name, tuple(values)) for item_name, values in sorted(item_totals.items()))
+    image = _render_monthly_item_sales_chart(source, metric, tuple(month_labels), chart_values)
+    cache_control = "public, max-age=86400, s-maxage=86400" if source == "supermart" else "private, max-age=15"
+    return Response(content=image, media_type="image/png", headers={"Cache-Control": cache_control})
 
 
 @app.post("/api/analytics/simulate")

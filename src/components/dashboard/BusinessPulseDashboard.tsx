@@ -445,8 +445,8 @@ export const BusinessPulseDashboard: React.FC = () => {
           </p>
         ) : (
           <img
-            key={`${salesChartSource}-${salesChartMetric}-${salesChartMonths}-${sales.length}`}
-            src={`${API_BASE_URL}/analytics/monthly-item-sales.png?source=${salesChartSource}&months=${salesChartMonths}&metric=${salesChartMetric}&version=${sales.length}`}
+            key={`${salesChartSource}-${salesChartMetric}-${salesChartMonths}-${salesChartSource === 'business' ? sales.length : 'dataset'}`}
+            src={`${API_BASE_URL}/analytics/monthly-item-sales.png?source=${salesChartSource}&months=${salesChartMonths}&metric=${salesChartMetric}${salesChartSource === 'business' ? `&version=${sales.length}` : ''}`}
             alt={`Monthly ${salesChartSource === 'supermart' ? 'Supermart subcategory' : 'business product'} sales by ${salesChartMetric} for ${salesChartMonths} months`}
             onError={() => setSalesChartError(true)}
             className="block w-full h-auto min-h-64 object-contain p-4"
