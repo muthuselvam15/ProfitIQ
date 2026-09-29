@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useBusiness } from '../../context/BusinessContext';
+import { API_BASE_URL } from '../../services/apiConfig';
 import {
   TrendingUp,
   CreditCard,
@@ -439,11 +440,13 @@ export const BusinessPulseDashboard: React.FC = () => {
           </div>
         </div>
         {salesChartError ? (
-          <p role="alert" className="p-5 text-sm text-rose-300">Could not load the sales chart. Check that the backend is running.</p>
+          <p role="alert" className="p-5 text-sm text-rose-300">
+            Could not load the sales chart from {API_BASE_URL}. Check VITE_API_URL and confirm the backend allows this Vercel site through CORS.
+          </p>
         ) : (
           <img
             key={`${salesChartSource}-${salesChartMetric}-${salesChartMonths}-${sales.length}`}
-            src={`http://localhost:8000/api/analytics/monthly-item-sales.png?source=${salesChartSource}&months=${salesChartMonths}&metric=${salesChartMetric}&version=${sales.length}`}
+            src={`${API_BASE_URL}/analytics/monthly-item-sales.png?source=${salesChartSource}&months=${salesChartMonths}&metric=${salesChartMetric}&version=${sales.length}`}
             alt={`Monthly ${salesChartSource === 'supermart' ? 'Supermart subcategory' : 'business product'} sales by ${salesChartMetric} for ${salesChartMonths} months`}
             onError={() => setSalesChartError(true)}
             className="block w-full h-auto min-h-64 object-contain p-4"

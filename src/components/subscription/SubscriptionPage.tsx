@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useBusiness } from '../../context/BusinessContext';
 import type { SubscriptionTier, UserRole } from '../../types';
 import { Crown, Check, UserCheck } from 'lucide-react';
+import { API_BASE_URL } from '../../services/apiConfig';
 
 type PaidTier = Exclude<SubscriptionTier, 'FREE'>;
 type RazorpayPaymentResult = {
@@ -28,8 +29,6 @@ declare global {
     Razorpay?: new (options: RazorpayCheckoutOptions) => RazorpayCheckout;
   }
 }
-
-const API_BASE_URL = 'http://localhost:8000/api';
 
 const loadRazorpayScript = () => new Promise<boolean>((resolve) => {
   if (window.Razorpay) {

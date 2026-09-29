@@ -20,8 +20,7 @@ import {
   MOCK_INVOICES,
   MOCK_ALERTS
 } from '../services/mockData';
-
-const API_BASE_URL = 'http://localhost:8000/api';
+import { API_BASE_URL } from '../services/apiConfig';
 
 type CustomerApiData = Partial<Customer> & {
   total_spent?: number;

@@ -6,8 +6,7 @@ import type {
 } from '../types';
 
 import { INITIAL_PULSE_DATA } from './mockData';
-
-const API_BASE_URL = 'http://localhost:8000/api';
+import { API_BASE_URL } from './apiConfig';
 
 export async function fetchBusinessPulse(): Promise<BusinessPulseData> {
   try {
